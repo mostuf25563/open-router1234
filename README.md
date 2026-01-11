@@ -103,3 +103,10 @@ Visit http://localhost:3000/api-docs for full API documentation.
 - **Backend**: Express.js
 - **AI**: OpenRouter API with structured output and response healing
 - **TTS**: Web Speech API
+
+
+TODOs:
+------
+- allow to dynamicly set speed
+- fix highlight spoken word (currently not in sync)
+- 
