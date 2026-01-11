@@ -25,6 +25,7 @@ export const speak = (text, lang = 'English', rate = 1, onStart) => {
   return new Promise((resolve) => {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = convertLangToISO(lang);
+    console.log('current lang:', utterance.lang, lang, text)
     utterance.rate = rate;
     if (onStart) utterance.onstart = onStart;
     utterance.onend = resolve;
