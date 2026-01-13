@@ -98,18 +98,18 @@ const swaggerOptions = {
 
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
 
-// Serve swagger-ui static files first
+// Serve swagger-ui static files
 app.use('/api-docs', swaggerUi.serve);
 
-// Then setup swagger UI with dynamic host injection
-app.use('/api-docs', (req, res, next) => {
+// Serve swagger UI with dynamic host injection
+app.get('/api-docs/', (req, res, next) => {
   const protocol = req.protocol || 'http';
   const host = req.get('host') || `localhost:${PORT}`;
-  const swaggerDocsWithHost = {
+  const specWithServers = {
     ...swaggerDocs,
     servers: [{ url: `${protocol}://${host}` }],
   };
-  swaggerUi.setup(swaggerDocsWithHost)(req, res, next);
+  swaggerUi.setup(specWithServers)(req, res, next);
 });
 
 // Redirect root to /api-docs
