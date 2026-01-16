@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useScreenplay } from './useScreenplay';
 import { playScreenplay, stop } from './tts';
 import './ScreenplayPlayer.css';
@@ -40,13 +40,30 @@ export default function ScreenplayGenerator() {
   const [languageSpeeds, setLanguageSpeeds] = useState({});
   const [currentWord, setCurrentWord] = useState('');
   const [darkMode, setDarkMode] = useState(false);
+  
+  // Override fields
+  const [useOverrides, setUseOverrides] = useState(false);
+  const [overrideApiKey, setOverrideApiKey] = useState('');
+  const [overrideModel, setOverrideModel] = useState('');
+  
   const { screenplay, loading, error, generate, format, models, selectedModel, setSelectedModel } = useScreenplay();
+
+  // Initialize dark mode from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.replace(/^#\/?/, ''));
+    const darkParam = params.get('dark') === 'true';
+    setDarkMode(darkParam);
+  }, []);
 
   const handleGenerate = () => {
     setCurrentScene(-1);
     setCurrentLine(-1);
     setExpandedSections({});
-    generate(storypitch, languagesUsed, defaultScreenplayLanguage, selectedModel);
+    
+    const model = useOverrides && overrideModel ? overrideModel : selectedModel;
+    const apiKey = useOverrides && overrideApiKey ? overrideApiKey : null;
+    
+    generate(storypitch, languagesUsed, defaultScreenplayLanguage, model, apiKey);
   };
 
   const toggleSection = (key) => {
@@ -168,44 +185,10 @@ export default function ScreenplayGenerator() {
 
   return (
     <div className={`container ${darkMode ? 'dark' : ''}`}>
-      <div className="header">
-        <h1>Screenplay Generator</h1>
-        <button 
-          className="dark-mode-toggle" 
-          onClick={() => setDarkMode(!darkMode)}
-          title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-        >
-          {darkMode ? '☀️' : '🌙'}
-        </button>
-      </div>
-
-      {format && (
-        <div className="section">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h2 onClick={() => setShowFormat(!showFormat)} style={{ cursor: 'pointer', margin: 0 }}>
-              {showFormat ? '[-]' : '[+]'} Response Format Schema
-            </h2>
-            {showFormat && (
-              <div className="expand-buttons">
-                <button onClick={expandAll} className="expand-btn">
-                  Expand All
-                </button>
-                <button onClick={collapseAll} className="collapse-btn">
-                  Collapse All
-                </button>
-              </div>
-            )}
-          </div>
-          {showFormat && (
-            <div className="format-display">
-              {renderValue(format, 'format')}
-            </div>
-          )}
-        </div>
-      )}
-
       <div className="section">
-        <h2>Generate Screenplay</h2>
+        <div className="header">
+          <h2>Generate Screenplay</h2>
+        </div>
         <div className="form-group">
           <label>Story pitch (optional)</label>
           <textarea
@@ -269,11 +252,50 @@ export default function ScreenplayGenerator() {
         </div>
 
         <div className="form-group">
+          <h3>Override Settings</h3>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={useOverrides}
+              onChange={(e) => setUseOverrides(e.target.checked)}
+              disabled={loading}
+            />
+            Use Custom API Key and/or Model
+          </label>
+        </div>
+
+        {useOverrides && (
+          <>
+            <div className="form-group">
+              <label>Custom API Key (optional)</label>
+              <input
+                type="password"
+                placeholder="sk-or-v1-..."
+                value={overrideApiKey}
+                onChange={(e) => setOverrideApiKey(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Custom Model (optional)</label>
+              <input
+                type="text"
+                placeholder="e.g., mistralai/devstral-2512:free"
+                value={overrideModel}
+                onChange={(e) => setOverrideModel(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+          </>
+        )}
+
+        <div className="form-group">
           <label>Model</label>
           <select
             value={selectedModel || ''}
             onChange={(e) => setSelectedModel(e.target.value)}
-            disabled={loading || !models || models.length === 0}
+            disabled={loading || !models || models.length === 0 || useOverrides}
           >
             {models && models.length ? (
               models.map(m => <option key={m} value={m}>{m}</option>)
@@ -282,6 +304,29 @@ export default function ScreenplayGenerator() {
             )}
           </select>
         </div>
+
+        {format && (
+          <div className="form-group">
+            <h3 onClick={() => setShowFormat(!showFormat)} style={{ cursor: 'pointer', margin: '0 0 12px 0' }}>
+              {showFormat ? '[-]' : '[+]'} Response Format Schema
+            </h3>
+            {showFormat && (
+              <div className="expand-buttons">
+                <button onClick={expandAll} className="expand-btn">
+                  Expand All
+                </button>
+                <button onClick={collapseAll} className="collapse-btn">
+                  Collapse All
+                </button>
+              </div>
+            )}
+            {showFormat && (
+              <div className="format-display">
+                {renderValue(format, 'format')}
+              </div>
+            )}
+          </div>
+        )}
 
         <button onClick={handleGenerate} disabled={loading}>
           {loading ? 'Generating...' : 'Generate Screenplay'}

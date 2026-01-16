@@ -3,18 +3,29 @@ import fs from 'fs/promises';
 
 let openrouter;
 let responseFormat;
+let defaultApiKey;
 
-const initializeOpenRouter = async () => {
-  if (!openrouter) {
+const initializeOpenRouter = async (customApiKey = null) => {
+  const apiKeyToUse = customApiKey || defaultApiKey;
+  
+  if (!apiKeyToUse) {
     const config = JSON.parse(await fs.readFile('./config.json', 'utf8'));
-    responseFormat = JSON.parse(await fs.readFile('./responseFormat.json', 'utf8'));
-    const OPENROUTER_API_KEY = config.apiKey.split('.')[0];
-
-    openrouter = new OpenRouter({
-      apiKey: OPENROUTER_API_KEY,
+    defaultApiKey = config.apiKey.split('.')[0];
+    return new OpenRouter({
+      apiKey: defaultApiKey,
     });
   }
-  return openrouter;
+  
+  return new OpenRouter({
+    apiKey: customApiKey,
+  });
+};
+
+const loadResponseFormat = async () => {
+  if (!responseFormat) {
+    responseFormat = JSON.parse(await fs.readFile('./responseFormat.json', 'utf8'));
+  }
+  return responseFormat;
 };
 
 /**
@@ -39,15 +50,19 @@ const initializeOpenRouter = async () => {
  *                 type: string
  *               model:
  *                 type: string
+ *               customApiKey:
+ *                 type: string
  *     responses:
  *       200:
  *         description: Generated screenplay
  */
 export const generateScreenplay = async (req, res) => {
-  const { story_pitch, languages_used, default_screenplay_language, model } = req.body;
+  const { story_pitch, languages_used, default_screenplay_language, model, customApiKey } = req.body;
 
   try {
-    const openrouter = await initializeOpenRouter();
+    const openrouter = await initializeOpenRouter(customApiKey);
+    const format = await loadResponseFormat();
+    
     const langs = languages_used || ['English', 'Spanish'];
     const defaultLang = default_screenplay_language || 'Hebrew';
     const promptContent = story_pitch
@@ -55,9 +70,9 @@ export const generateScreenplay = async (req, res) => {
       : `Create a creative original screenplay. Use these languages for character dialogue: ${langs.join(', ')}. The default screenplay language (for all text except character dialogue) should be: ${defaultLang}.`;
 
     // Override using request payload
-    responseFormat.jsonSchema.schema.properties.default_screenplay_language.default = default_screenplay_language;
-    responseFormat.jsonSchema.schema.properties.languages_used.default = languages_used;
-    responseFormat.jsonSchema.schema.properties.story_pitch.default = story_pitch;
+    format.jsonSchema.schema.properties.default_screenplay_language.default = default_screenplay_language;
+    format.jsonSchema.schema.properties.languages_used.default = languages_used;
+    format.jsonSchema.schema.properties.story_pitch.default = story_pitch;
 
     const completion = await openrouter.chat.send({
       model: model || 'allenai/olmo-3.1-32b-think:free',
@@ -67,7 +82,7 @@ export const generateScreenplay = async (req, res) => {
           content: promptContent,
         },
       ],
-      responseFormat: responseFormat,
+      responseFormat: format,
       plugins: [
         { id: 'response-healing' }
       ],
@@ -104,10 +119,8 @@ export const generateScreenplay = async (req, res) => {
  */
 export const getScreenplayFormat = async (req, res) => {
   try {
-    if (!responseFormat) {
-      responseFormat = JSON.parse(await fs.readFile('./responseFormat.json', 'utf8'));
-    }
-    res.json(responseFormat);
+    const format = await loadResponseFormat();
+    res.json(format);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

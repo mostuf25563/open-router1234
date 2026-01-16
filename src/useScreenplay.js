@@ -30,6 +30,7 @@ export const useScreenplay = () => {
     }
     return false;
   }
+
   useEffect(() => {
     const url = getIsDebug() ? '/api/screenplay/format?debug=true' : '/api/screenplay/format';
     fetch(url)
@@ -38,7 +39,7 @@ export const useScreenplay = () => {
       .catch(err => console.error('Failed to load format:', err));
   }, []);
 
-  // Fetch available free models on init and extract model_variant_slug
+  // Fetch available free models on init and extract model slugs from models.json
   useEffect(() => {
     const modelsUrl = '/api/models';
     fetch(modelsUrl)
@@ -48,27 +49,55 @@ export const useScreenplay = () => {
       })
       .then(data => {
         console.log('Models API response:', data);
-        // Expect data.rows or data.items depending on API
-        const items = data.rows || data.items || data.models || data;
+        
+        // Extract slugs from data.models array
+        let items = [];
+        if (data.data && Array.isArray(data.data.models)) {
+          // OpenRouter format: { data: { models: [...] } }
+          items = data.data.models;
+        } else if (Array.isArray(data.rows)) {
+          // Alternative format: { rows: [...] }
+          items = data.rows;
+        } else if (Array.isArray(data.models)) {
+          // Alternative format: { models: [...] }
+          items = data.models;
+        } else if (Array.isArray(data)) {
+          // Direct array format
+          items = data;
+        }
+
         console.log('Extracted items:', items);
-        if (Array.isArray(items)) {
-          // extract unique model_variant_slug values
-          const variants = items
-            .map(i => i.model_variant_slug || i.model_variant || i.slug)
+        
+        if (Array.isArray(items) && items.length > 0) {
+          // Extract slug with :free suffix if available
+          const slugs = items
+            .map(item => {
+              // Try to get model_variant_slug first (includes :free suffix)
+              if (item.model_variant_slug) {
+                return item.model_variant_slug;
+              }
+              // Fall back to slug with :free suffix
+              if (item.slug) {
+                const slug = item.slug;
+                return `${slug}:free`;
+              }
+              return null;
+            })
             .filter(Boolean);
-          console.log('Extracted variants:', variants);
-          const unique = Array.from(new Set(variants));
-          console.log('Unique variants:', unique);
+
+          console.log('Extracted slugs:', slugs);
+          const unique = Array.from(new Set(slugs));
+          console.log('Unique slugs:', unique);
           setModels(unique);
           if (unique.length && !selectedModel) setSelectedModel(unique[0]);
         } else {
-          console.warn('Items is not an array:', items);
+          console.warn('No items found in models response');
         }
       })
       .catch(err => console.warn('Failed to fetch models list:', err));
   }, [selectedModel]);
 
-  const generate = async (story_pitch, languages_used, default_screenplay_language, model) => {
+  const generate = async (story_pitch, languages_used, default_screenplay_language, model, customApiKey) => {
     setLoading(true);
     setError('');
     try {
@@ -80,6 +109,7 @@ export const useScreenplay = () => {
         default_screenplay_language,
         debug: isDebug,
         model: model || selectedModel,
+        ...(customApiKey && { customApiKey }),
       };
 
       const res = await fetch(url, {
@@ -98,10 +128,10 @@ export const useScreenplay = () => {
           bodyText = await res.text().catch(() => null);
         }
 
-        const requestInfo = `Request:\nMethod: POST\nURL: ${url}\nHeaders: ${JSON.stringify({ 'Content-Type': 'application/json' }, null, 2)}\nBody: ${JSON.stringify(payload, null, 2)}`;
-        const responseInfo = `Response:\nStatus: ${res.status} ${res.statusText}\nHeaders: ${JSON.stringify(Object.fromEntries(res.headers.entries()), null, 2)}\nBody: ${bodyText}`;
+        const requestInfo = `REQUEST:\n${'─'.repeat(60)}\nMethod: POST\nURL: ${url}\nHeaders: Content-Type: application/json\nBody:\n${JSON.stringify(payload, null, 2)}`;
+        const responseInfo = `\n\nRESPONSE:\n${'─'.repeat(60)}\nStatus: ${res.status} ${res.statusText}\nHeaders:\n${Array.from(res.headers.entries()).map(([k, v]) => `  ${k}: ${v}`).join('\n')}\nBody:\n${bodyText}`;
 
-        const msg = isDebug ? `${requestInfo}\n\n${responseInfo}` : 'Generation failed';
+        const msg = isDebug ? `${requestInfo}${responseInfo}` : 'Generation failed';
 
         throw new Error(msg);
       }
